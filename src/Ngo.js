@@ -136,22 +136,50 @@ app.post('/auth/google', async (c) => {
 });
 
 // Route to update profile, allowing name and phone updates
-app.post('/update-profile', jwtMiddleware, async (c) => {
-  const { name, phone } = await c.req.json();
+app.post('/update-phone', jwtMiddleware, async (c) => {
+  const { phone } = await c.req.json();
   const userId = c.req.user.userId;
-    console.log(c.req.user);    
-  const result = await executeQuery(c, `
-    UPDATE NGOS
-    SET name = COALESCE(?, name), phone = COALESCE(?, phone)
-    WHERE id = ?
-    RETURNING *;
-  `, [name, phone, userId]);
-
-  if (result.results.length === 0) {
-    return c.json({ error: 'Profile update failed' }, 400);
-  }
-
-  return c.json(result.results[0]);
+    console.log(c.req.user.userId);    
+    const result = await executeQuery(c, `
+        UPDATE NGOS
+        SET  phone = ?
+        WHERE id = ?
+        `, [ phone, userId]);
+        return c.json({ result: 'Phone Number updated successfully' });
 });
 
+
+//NGO create campaign
+
+app.post('/campaign', jwtMiddleware, async (c) => {
+    const { campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type } = await c.req.json();
+    const userId = c.req.user.userId;
+    //check if food category is 'Vegetarian', 'Non-Vegetarian', 'Vegan'
+    if (food_category !== 'Vegetarian' && food_category !== 'Non-Vegetarian' && food_category !== 'Vegan') {
+        return c.json({ error: 'Invalid food category' }, 400);
+    }
+
+    //check if food type is 'Cooked', 'Raw', 'Packaged'
+    if(food_type !== 'Cooked' && food_type !== 'Raw' && food_type !== 'Packaged'){
+        return c.json({ error: 'Invalid food type' }, 400);
+    }
+    //check if pickup type is 'Self-Drop'or 'Volunteer Pickup'
+    if(pickup_type !== 'Self-Drop' && pickup_type !== 'Volunteer Pickup'){
+        return c.json({ error: 'Invalid pickup type' }, 400);
+    }
+    const result = await executeQuery(c, `
+        INSERT INTO CAMPAIGN (ngo_id, campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING *;
+        `, [userId, campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type]);
+        return c.json({ result: 'Campaign created successfully' });
+        });
+
+
+
+//get campaigns public endpoint
+app.get('/campaigns', async (c) => {
+    const result = await executeQuery(c, `SELECT * FROM CAMPAIGN`);
+    return c.json({ campaigns: result });
+});
 export default app;

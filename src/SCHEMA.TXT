@@ -1,0 +1,51 @@
+Table Users {
+  user_id INT [pk, increment] // Primary Key
+  username VARCHAR(50) [unique, not null] // Username of the user
+  email VARCHAR(100) [unique, not null] // Email address of the user
+  password_hash VARCHAR(255) [not null] // Hashed password for the user
+  created_at TIMESTAMP // Record creation timestamp
+  updated_at TIMESTAMP  // Record update timestamp
+  google_pic varchar
+}
+
+
+Table Food_Items {
+  food_item_id INT [pk, increment] // Primary Key
+  user_id INT [ref: > Users.user_id] // Foreign Key referencing Users.
+  family_id INT [ref: > Families.family_id]
+  food_name VARCHAR(255) [not null] // Name of the food item
+  expiry_date DATE [not null] // Expiration date of the food item
+  quantity DECIMAL(10, 2) [not null] // Quantity of the food item
+  category ENUM('Dairy', 'Vegetables', 'Fruits', 'Grains', 'Meat', 'Packaged', 'Other','cooked') [not null] // Category of the food item
+  notes TEXT // Additional notes about the food item
+  created_at TIMESTAMP // Record creation timestamp
+  updated_at TIMESTAMP  // Record update timestamp
+}
+
+Table Families {
+  family_id INT [pk, increment] // Primary Key for Family
+  family_name VARCHAR(100) [not null] // Name of the family
+  family_code VARCHAR(50) [unique, not null] // Unique code to join the family
+  created_at TIMESTAMP // Family creation timestamp
+  created_by INT [ref: > Users.user_id] // User who created the family
+}
+
+Table Family_Members {
+  family_member_id INT [pk, increment] // Primary Key
+  family_id INT [ref: > Families.family_id] // Foreign Key referencing Families
+  user_id INT [ref: > Users.user_id] // Foreign Key referencing Users
+  role ENUM('admin', 'member', 'owner') [default: 'member'] // Role in the family
+  joined_at TIMESTAMP // Timestamp when user joined the family
+  status ENUM('active', 'pending', 'invited') [default: 'pending'] // Membership status
+}
+
+
+Table Notifications {
+  notification_id INT [pk, increment] // Primary Key
+  user_id INT [ref: > Users.user_id] // Foreign Key referencing Users
+  food_item_id INT [ref: > Food_Items.food_item_id] // Foreign Key referencing Food_Items
+  notification_date DATETIME [not null] // Date and time of the notification
+  message VARCHAR(255) [not null] // Notification message
+  is_read BOOLEAN [default: FALSE] // Status indicating if the notification is read
+  created_at TIMESTAMP  // Record creation timestamp
+}

@@ -1,4 +1,3 @@
-
 import { Hono } from 'hono'
 
 const app = new Hono()
@@ -129,23 +128,37 @@ app.post('/auth/google', async (c) => {
   let result = await executeQuery(c, `SELECT * FROM users WHERE email = ?`, [email]);
   let user;
   if (result.results.length === 0) {
+    // Check if username already exists
+    let usernameCheck = await executeQuery(c, `SELECT * FROM users WHERE username = ?`, [name]);
+    let finalUsername = name;
+    if (usernameCheck.results.length > 0) {
+      finalUsername = email; // Use email as username if the username already exists
+    }
+
     // User does not exist, create new user with default role 'customer'
     result = await executeQuery(c, `
       INSERT INTO users (google_id, username, email, phone, google_pic)
       VALUES (?, ?, ?, ?, ?)
       RETURNING *;
-    `, [userData.sub, name, email, phone, picture]);
+    `, [userData.sub, finalUsername, email, phone, picture]);
     user = result.results[0];
   } else {
     user = result.results[0];
   }
-
+  
   // Generate a token that includes the user's ID and role
   const token = await generateJWT({ userId: user.user_id, role: user.role });
 
   return c.json({ token, user });
 });
 
+//get user
+app.get('/user', jwtMiddleware, async (c) => {
+  const { userId } = c.req.user;
+  const result = await executeQuery(c, `SELECT * FROM users WHERE user_id = ?`,
+    [userId]);
+  return c.json(result.results[0]);
+  });
 
 
 
@@ -176,16 +189,29 @@ app.post('/family', jwtMiddleware, async (c) => {
 //ENDPOINT TO JOIN A FAMILY
 app.post('/joinfamily', jwtMiddleware, async (c) => {
   const userId = c.req.user.userId;
-  const { family_code } = await c.req.json();
+  const { family_id } = await c.req.json();
 
   const result = await executeQuery(c, `
-    SELECT * FROM Families WHERE family_code = ?;
-    `, [family_code]);
+    SELECT * FROM Families WHERE family_id = ?;
+    `, [family_id]);
     if (result.results.length === 0) {
       return c.status(404).json({ message: 'Family not found' });
     }
     return result;
   });
+
+//endpoint to update user profile phone and family_id
+app.post('/update-profile', jwtMiddleware, async (c) => {
+  const userId = c.req.user.userId;
+  const { phone, family_id } = await c.req.json();
+  const result = await executeQuery(c, `
+    UPDATE users 
+    SET phone = ?, current_family_id = ? 
+    WHERE user_id = ?
+    RETURNING *;
+  `, [phone, family_id, userId]);
+  return c.json(result.results[0]);
+});
 
 
 //endpoint to add product with userid 
@@ -211,12 +237,69 @@ app.post('/product', jwtMiddleware, async (c) => {
   return c.json(result.results[0]);
 });
 
-//get all products of users
+//get all products of user along with the user's data and family members' products
 app.get('/products', jwtMiddleware, async (c) => {
   const userId = c.req.user.userId;
+  
+  // Query to fetch the user's products along with user details
   const result = await executeQuery(c, `
-    SELECT * FROM Food_Items WHERE user_id = ?;
+    SELECT 
+      Food_Items.*, 
+      users.username, 
+      users.email, 
+      users.phone, 
+      users.google_pic 
+    FROM 
+      Food_Items
+    JOIN 
+      users ON Food_Items.user_id = users.user_id
+    WHERE 
+      Food_Items.user_id = ?;
   `, [userId]);
+
   return c.json(result.results);
 });
+
+
+//all products no user id with user data
+app.get('/all-product', jwtMiddleware, async (c) => {
+  const userId = c.req.user.userId;
+  const result = await executeQuery(c, `
+    SELECT 
+      Food_Items.*, 
+      users.username, 
+      users.email, 
+      users.phone, 
+      users.google_pic,
+      users.current_family_id 
+    FROM 
+      Food_Items
+    JOIN 
+      users ON Food_Items.user_id = users.user_id;
+  `, []);
+  
+  return c.json(result.results);
+});
+
+
+
+//a open endpoint to add product by finding the user by phone
+app.post('/add-product', jwtMiddleware, async (c) => {
+  const { name, price, quantity, userPhone } = c.req.body;
+  function findUserByPhone(c, phone) {
+    return executeQuery(c, `SELECT user_id FROM users WHERE phone = ?`, [phone]);
+  }
+  const user = await findUserByPhone(c, userPhone);
+  const userId = user.results[0].user_id;
+  if (!userId) {
+    return c.status(404).json({ message: 'User not found' });
+    }
+    const result = await executeQuery(c, `
+      INSERT INTO Food_Items (name, price, quantity, user_id)
+      VALUES (?, ?, ?, ?);
+      `, [name, price, quantity, userId]);
+      return c.json(result);
+      });
+      
+    
 export default app

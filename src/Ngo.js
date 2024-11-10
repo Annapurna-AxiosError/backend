@@ -135,7 +135,7 @@ app.post('/auth/google', async (c) => {
   return c.json({ ngoToken, user });
 });
 
-// Route to update profile, allowing name and phone updates
+// Route to update phone, allowing name and phone updates
 app.post('/update-phone', jwtMiddleware, async (c) => {
   const { phone } = await c.req.json();
   const userId = c.req.user.userId;
@@ -148,12 +148,25 @@ app.post('/update-phone', jwtMiddleware, async (c) => {
         return c.json({ result: 'Phone Number updated successfully' });
 });
 
+//route to update ngo name
+app.post('/update-name', jwtMiddleware, async (c) => {
+    const { name } = await c.req.json();
+    const userId = c.req.user.userId;
+    const result = await executeQuery(c, `
+        UPDATE NGOS
+        SET  name = ?
+        WHERE id = ?
+        `, [ name, userId]);
+        return c.json({ result: 'Name updated successfully' });
+});
 
 //NGO create campaign
-
+//create a notification in Notifications table
+// name notification_date message is_read-false created_at-timestamp 
 app.post('/campaign', jwtMiddleware, async (c) => {
     const { campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type } = await c.req.json();
     const userId = c.req.user.userId;
+    
     //check if food category is 'Vegetarian', 'Non-Vegetarian', 'Vegan'
     if (food_category !== 'Vegetarian' && food_category !== 'Non-Vegetarian' && food_category !== 'Vegan') {
         return c.json({ error: 'Invalid food category' }, 400);
@@ -163,23 +176,54 @@ app.post('/campaign', jwtMiddleware, async (c) => {
     if(food_type !== 'Cooked' && food_type !== 'Raw' && food_type !== 'Packaged'){
         return c.json({ error: 'Invalid food type' }, 400);
     }
+
     //check if pickup type is 'Self-Drop'or 'Volunteer Pickup'
     if(pickup_type !== 'Self-Drop' && pickup_type !== 'Volunteer Pickup'){
         return c.json({ error: 'Invalid pickup type' }, 400);
     }
-    const result = await executeQuery(c, `
+
+    // Insert campaign into CAMPAIGN table
+    const campaignResult = await executeQuery(c, `
         INSERT INTO CAMPAIGN (ngo_id, campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *;
-        `, [userId, campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type]);
-        return c.json({ result: 'Campaign created successfully' });
-        });
+    `, [userId, campaign_title, campaign_description, food_type, food_category, availability_start_time,availability_end_time,pickup_location,latitude,longitude,pickup_type]);
+      console.log(campaignResult);
+    // Create notification
+    const notificationMessage = `New campaign created: ${campaign_title}`;
+    await executeQuery(c, `
+        INSERT INTO Notifications (name, notification_date, message, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?);
+    `, [campaign_title, new Date().toISOString(), notificationMessage, false, new Date().toISOString()]);
 
-
+    return c.json({ result: 'Campaign created successfully' });
+});
 
 //get campaigns public endpoint
 app.get('/campaigns', async (c) => {
-    const result = await executeQuery(c, `SELECT * FROM CAMPAIGN`);
-    return c.json({ campaigns: result });
+    //merge ngo details along with the campaign details
+    const result = await executeQuery(c, `
+        SELECT * FROM CAMPAIGN
+        JOIN NGOS ON CAMPAIGN.ngo_id = NGOS.id;
+        `);
+        return c.json(result);
+        
 });
+
+//whatsapp api webhook
+app.get("/webhook", async (c) => {
+    //get token from arguments
+    
+    });
+
+  //get notofications of user
+  app.get('/notifications', async (c) => {
+    const result = await executeQuery(c, `
+      SELECT * FROM Notifications
+      WHERE is_read = false;
+    `);
+    return c.json(result);
+  }
+);
+
 export default app;
